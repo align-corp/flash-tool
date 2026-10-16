@@ -8,7 +8,7 @@ PROBE = "stlink"
 MCU_LIST = ["H7x", "G0x", "L4x", "F421"]
 
 import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog
+from tkinter import ttk, scrolledtext, filedialog, messagebox
 import subprocess
 import os
 import sys
@@ -41,6 +41,9 @@ TRANSLATIONS = {
             "MCU Type F421 -> 4-in-1 (M3-M450-M460-M490)"
         ),
         "lang_btn": "中文",
+        "erase": "Erase Chip",
+        "erase_confirm_title": "Full Chip Erase",
+        "erase_confirm": "This will erase the entire flash of the selected MCU ({mcu}), including the bootloader and settings.\n\nContinue?",
     },
     "zh_TW": {
         "select_mcu": "選擇 MCU 類型:",
@@ -58,6 +61,9 @@ TRANSLATIONS = {
             "MCU 類型 F421 -> 四合一（M3-M450-M460-M490）"
         ),
         "lang_btn": "English",
+        "erase": "清除晶片",
+        "erase_confirm_title": "完整晶片清除",
+        "erase_confirm": "這將清除所選 MCU（{mcu}）的全部快閃記憶體，包括 bootloader 與設定。\n\n是否繼續？",
     },
 }
 
@@ -129,9 +135,10 @@ def get_openocd():
     else:
         return get_resource_path("tools/linux/openocd/bin/openocd")
 
-def run_openocd():
+def run_openocd(erase=False):
     '''
     run openocd as a child, looping until running is False or success
+    if erase is True, run a full chip erase instead of flashing firmware
     '''
     global running
     running = True
@@ -144,23 +151,26 @@ def run_openocd():
     else:
         mcu_base = mcu_type
         k_tag = ''
-    config_file = f"MCU/{mcu_base}/openocd-unlock.cfg"
+    script = "openocd-erase.cfg" if erase else "openocd-unlock.cfg"
+    config_file = f"MCU/{mcu_base}/{script}"
     probe_file = get_resource_path(f"probes/{probe_type}.cfg")
 
     config_file = get_resource_path(config_file)
     custom_bootloader = bootloader_var.get()
 
-    if custom_bootloader:
+    if erase:
+        bootloader = ""
+    elif custom_bootloader:
         bootloader = custom_bootloader
     else:
         log_message("Error: no firmware selected")
         return
 
-    log_message("Starting MCU %s flash" % mcu_type)
+    log_message("Starting MCU %s %s" % (mcu_type, "erase" if erase else "flash"))
 
     using_tempfile = False
 
-    if bootloader.lower().endswith(".hex"):
+    if not erase and bootloader.lower().endswith(".hex"):
         thandle = tempfile.NamedTemporaryFile(delete=False, suffix=".bin")
         tfile = thandle.name
         print("CREATED '%s'" % tfile)
@@ -185,10 +195,11 @@ def run_openocd():
                 startupinfo = None
 
             openocd = get_openocd()
-            process = subprocess.Popen([openocd,
-                                        '-c', 'set BOOTLOADER "%s"' % bootloader,
-                                        '--file', probe_file,
-                                        '--file', config_file],
+            args = [openocd]
+            if not erase:
+                args += ['-c', 'set BOOTLOADER "%s"' % bootloader]
+            args += ['--file', probe_file, '--file', config_file]
+            process = subprocess.Popen(args,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE,
                                         startupinfo=startupinfo)
@@ -211,7 +222,7 @@ def run_openocd():
             if retcode is not None:
                 if retcode == 0:
                     log_message("Success")
-                    print("Flash successful.")
+                    print("Erase successful." if erase else "Flash successful.")
                     root.after(0, lambda: update_status_led("green"))
                     running = False
         except Exception as e:
@@ -225,6 +236,17 @@ def start_openocd():
         output_text.delete(1.0, tk.END)
         thd = threading.Thread(target=run_openocd)
         thd.start()
+
+def erase_chip():
+    if running:
+        return
+    if not messagebox.askyesno(tr("erase_confirm_title"),
+                               tr("erase_confirm").format(mcu=mcu_var.get()),
+                               icon=messagebox.WARNING):
+        return
+    output_text.delete(1.0, tk.END)
+    thd = threading.Thread(target=run_openocd, kwargs={"erase": True})
+    thd.start()
 
 def stop_openocd():
     global running
@@ -249,6 +271,7 @@ def update_all_texts():
     start_button.config(text=tr("start"))
     stop_button.config(text=tr("stop"))
     quit_button.config(text=tr("quit"))
+    erase_button.config(text=tr("erase"))
     bootloader_label.config(text=tr("firmware"))
     bootloader_button.config(text=tr("browse"))
     warn.config(text=tr("warning"))
@@ -276,6 +299,10 @@ mcu_label = ttk.Label(root, text=tr("select_mcu"))
 mcu_label.grid(row=0, column=0, padx=10, pady=10)
 mcu_dropdown = ttk.OptionMenu(root, mcu_var, MCU_LIST[0], *MCU_LIST)
 mcu_dropdown.grid(row=0, column=1, padx=10, pady=10)
+
+# Full chip erase button
+erase_button = ttk.Button(root, text=tr("erase"), command=erase_chip)
+erase_button.grid(row=0, column=2, padx=10, pady=10)
 
 # Language toggle button
 lang_btn = ttk.Button(root, text=tr("lang_btn"), command=toggle_language)
