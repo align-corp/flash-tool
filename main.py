@@ -3,7 +3,7 @@
 UI for unlocking ESC MCUs for AM32 project
 '''
 
-VERSION = "1.0"
+VERSION = "1.1"
 PROBE = "stlink"
 MCU_LIST = ["H7x", "G0x", "L4x", "F421"]
 
