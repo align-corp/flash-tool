@@ -1,0 +1,13 @@
+[project]
+name = "flash-tool"
+version = "1.1"
+requires-python = ">=3.11"
+dependencies = [
+    "intelhex>=2.3.0",
+    "setuptools>=84.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.22.3",
+]
