@@ -1,7 +1,6 @@
 __pycache__
 *.log
 .DS_Store
-.python-version
 *.spec
 build/
 dist/
